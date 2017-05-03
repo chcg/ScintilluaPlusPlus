@@ -6,8 +6,8 @@ Notepad++ plugin for supporting [Scintillua's](https://foicica.com/scintillua/) 
 ## Installation
 Download a release from the [Release](https://github.com/dail8859/ScintilluaPlusPlus/releases) page. Extract the zip file then:
 
-1. Copy the `Scintillua++.dll` to Notepad++'s plugin directory
-1. Copy the contents of the `config` directory into Notepad++'s plugin config directory - most likely located under `%APPDATA%`
+1. Copy the `Scintillua++.dll` (or `Scintillua++_64.dll` for the 64bit version) to Notepad++'s plugin directory
+1. Copy the `Scintillua++` directory into Notepad++'s plugin config directory - most likely located under `%APPDATA%`
 
 ## Usage
 This auto detects files based on file names or file extensions. By default this will only parse files that Notepad++ does not recognize. Setting the `override` flag to `true` in the settings file will parse files even if Notepad++ already supports the file type.
@@ -17,7 +17,7 @@ This comes with a default theme that is very similar to Notepad++'s default them
 You can also create your own custom lexers using the [LPeg](http://www.inf.puc-rio.br/~roberto/lpeg/) Lua library.
 
 ## Development
-The code has been developed using MSVC 2013. Building the code will generate the DLL which can be used by Notepad++. For convenience, MSVC automatically copies the DLL and files into Notepad++'s directories.
+The code has been developed using MSVC 2015. Building the code will generate the DLL which can be used by Notepad++. For convenience, MSVC automatically copies the DLL and files into Notepad++'s directories.
 
 ## License
 This code is released under the [GNU General Public License version 2](http://www.gnu.org/licenses/gpl-2.0.txt).

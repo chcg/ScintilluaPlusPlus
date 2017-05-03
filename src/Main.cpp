@@ -16,38 +16,47 @@
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
+#include <string>
+#include <fstream>
+#include <streambuf>
+
 #include "PluginDefinition.h"
 #include "Version.h"
 #include "AboutDialog.h"
+#include "LanguageDialog.h"
 #include "resource.h"
 #include "Config.h"
 #include "ScintillaGateway.h"
 #include "Utilities.h"
+#include "menuCmdID.h"
+#include "NotepadPPGateway.h"
 
 static HANDLE _hModule;
 static NppData nppData;
 static Configuration config;
+static ScintillaGateway editor;
+static NotepadPPGateway npp;
+static std::map<uptr_t, std::string> bufferLanguages;
 
 // Helper functions
-static HWND GetCurrentScintilla();
-static bool DetermineLanguageFromFileName();
+static std::string DetermineLanguageFromFileName(const std::string &fileName);
 
 // Menu callbacks
 static void editSettings();
 static void showAbout();
+static void setLanguage();
+static void editLanguageDefinition();
+static void createNewLanguageDefinition();
 
 FuncItem funcItem[] = {
+	{ TEXT("Set Language..."), setLanguage, 0, false, nullptr },
+	{ TEXT(""), nullptr, 0, false, nullptr }, // separator
+	{ TEXT("Create New Language Definition..."), createNewLanguageDefinition, 0, false, nullptr },
+	{ TEXT("Edit Language Definition..."), editLanguageDefinition, 0, false, nullptr },
 	{ TEXT("Edit Settings..."), editSettings, 0, false, nullptr },
 	{ TEXT(""), nullptr, 0, false, nullptr }, // separator
 	{ TEXT("About..."), showAbout, 0, false, nullptr }
 };
-
-static HWND GetCurrentScintilla() {
-	int id;
-	SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, (LPARAM)&id);
-	if (id == 0) return nppData._scintillaMainHandle;
-	else return nppData._scintillaSecondHandle;
-}
 
 static std::string DetermineLanguageFromFileName(const std::string &fileName) {
 	for (const auto &kv : config.file_extensions) {
@@ -61,35 +70,60 @@ static std::string DetermineLanguageFromFileName(const std::string &fileName) {
 	return std::string("");
 }
 
-static void SetLexer(const ScintillaGateway &editor, const std::string &language) {
+static void SetLexer(const std::string &language) {
 	if (language.empty())
 		return;
 
-	std::wstring ws = StringFromUTF8(language);
-	ws += L" (lpeg)";
-
-	SendMessage(nppData._nppHandle, NPPM_SETSTATUSBAR, STATUSBAR_DOC_TYPE, reinterpret_cast<LPARAM>(ws.c_str()));
-
-	wchar_t config_dir[MAX_PATH] = { 0 };
-	SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, (LPARAM)config_dir);
-	wcscat_s(config_dir, MAX_PATH, L"\\Scintillua++");
+	auto config_dir = npp.GetPluginsConfigDir();
+	config_dir += L"\\Scintillua++";
 
 	editor.SetLexerLanguage("lpeg");
-	editor.SetProperty("lexer.lpeg.home", UTF8FromString(config_dir).c_str());
-	editor.SetProperty("lexer.lpeg.color.theme", config.theme.c_str());
+
+	if (editor.GetLexer() == 1 /*SCLEX_NULL*/) {
+		MessageBox(NULL, L"Failed to set LPeg lexer", NPP_PLUGIN_NAME, MB_OK | MB_ICONERROR);
+		return;
+	}
+
+	editor.SetProperty("lexer.lpeg.home", UTF8FromString(config_dir));
+	editor.SetProperty("lexer.lpeg.color.theme", config.theme);
 	editor.SetProperty("fold", "1");
 
 	editor.PrivateLexerCall(SCI_GETDIRECTFUNCTION, editor.GetDirectFunction());
 	editor.PrivateLexerCall(SCI_SETDOCPOINTER, editor.GetDirectPointer());
-	editor.PrivateLexerCall(SCI_SETLEXERLANGUAGE, reinterpret_cast<int>(language.c_str()));
+	editor.PrivateLexerCall(SCI_SETLEXERLANGUAGE, reinterpret_cast<sptr_t>(language.c_str()));
 
 	// Always show the folding margin. Since N++ doesn't recognize the file it won't have the margin showing.
 	editor.SetMarginWidthN(2, 14);
 
 	editor.Colourise(0, -1);
+
+	// Check for errors
+	char buffer[512] = { 0 };
+	editor.PrivateLexerCall(SCI_GETSTATUS, reinterpret_cast<sptr_t>(buffer));
+	if (strlen(buffer) > 0) {
+		MessageBox(nppData._nppHandle, StringFromUTF8(buffer).c_str(), NPP_PLUGIN_NAME, MB_OK | MB_ICONERROR);
+		return;
+	}
+
+	std::wstring ws = StringFromUTF8(language);
+	ws += L" (lpeg)";
+	npp.SetStatusBar(STATUSBAR_DOC_TYPE, ws);
 }
 
-BOOL APIENTRY DllMain(HANDLE hModule, DWORD  reasonForCall, LPVOID lpReserved) {
+static void CheckFileForNewLexer() {
+	auto bufferid = npp.GetCurrentBufferID();
+	const auto search = bufferLanguages.find(bufferid);
+
+	if (search != bufferLanguages.end()) {
+		SetLexer(search->second);
+	}
+	else if (config.over_ride || editor.GetLexer() == 1 /*SCLEX_NULL*/) {
+		auto ext = npp.GetFileName();
+		SetLexer(DetermineLanguageFromFileName(UTF8FromString(ext)));
+	}
+}
+
+BOOL APIENTRY DllMain(HANDLE hModule, DWORD reasonForCall, LPVOID lpReserved) {
 	switch (reasonForCall) {
 		case DLL_PROCESS_ATTACH:
 			_hModule = hModule;
@@ -106,7 +140,8 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD  reasonForCall, LPVOID lpReserved) {
 
 extern "C" __declspec(dllexport) void setInfo(NppData notepadPlusData) {
 	nppData = notepadPlusData;
-	ConfigLoad(&nppData, &config);
+	editor.SetScintillaInstance(nppData._scintillaMainHandle);
+	npp.SetNppData(nppData);
 }
 
 extern "C" __declspec(dllexport) const wchar_t * getName() {
@@ -120,6 +155,7 @@ extern "C" __declspec(dllexport) FuncItem * getFuncsArray(int *nbF) {
 
 extern "C" __declspec(dllexport) void beNotified(const SCNotification *notify) {
 	static bool isReady = false;
+	static std::wstring fileBeingSaved;
 
 	// Somehow we are getting notifications from other scintilla handles at times
 	if (notify->nmhdr.hwndFrom != nppData._nppHandle &&
@@ -131,66 +167,95 @@ extern "C" __declspec(dllexport) void beNotified(const SCNotification *notify) {
 #if _DEBUG
 		case SCN_UPDATEUI:
 			if (notify->updated & SC_UPDATE_SELECTION) {
-				ScintillaGateway editor(GetCurrentScintilla());
+				if (editor.GetLexerLanguage() == "lpeg") {
+					// Make sure no errors occured
+					if (editor.PrivateLexerCall(SCI_GETSTATUS, NULL) == 0) {
+						char buffer[512] = { 0 };
+						std::string text;
 
-				char buffer[256];
-				editor.GetLexerLanguage(buffer);
-				if (strcmp(buffer, "lpeg") == 0) {
-					std::string text;
+						editor.PrivateLexerCall(SCI_GETLEXERLANGUAGE, reinterpret_cast<sptr_t>(buffer));
+						text = buffer;
+						text += " (lpeg): ";
+						editor.PrivateLexerCall(editor.GetStyleAt(editor.GetCurrentPos()), reinterpret_cast<sptr_t>(buffer));
+						text += buffer;
+						text += ' ';
+						text += std::to_string(editor.GetStyleAt(editor.GetCurrentPos()));
 
-					editor.Call(SCI_PRIVATELEXERCALL, SCI_GETLEXERLANGUAGE, buffer);
-					text = buffer;
-					text += " (lpeg): ";
-					editor.Call(SCI_PRIVATELEXERCALL, editor.GetStyleAt(editor.GetCurrentPos()), buffer);
-					text += buffer;
-					text += ' ';
-					text += std::to_string(editor.GetStyleAt(editor.GetCurrentPos()));
-
-					SendMessage(nppData._nppHandle, NPPM_SETSTATUSBAR, STATUSBAR_DOC_TYPE, reinterpret_cast<LPARAM>(StringFromUTF8(text).c_str()));
+						npp.SetStatusBar(STATUSBAR_DOC_TYPE, StringFromUTF8(text));
+					}
 				}
 			}
 			break;
 #endif
 		case NPPN_READY: {
 			isReady = true;
-			ConfigLoad(&nppData, &config);
+			ConfigLoad(npp, &config);
 
 			// Get the path to the external lexer
-			wchar_t config_dir[MAX_PATH] = { 0 };
-			SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, (LPARAM)config_dir);
-			wcscat_s(config_dir, MAX_PATH, L"\\Scintillua++\\LexLPeg.dll");
+			auto config_dir = npp.GetPluginsConfigDir();
+#ifdef _WIN64
+			config_dir += L"\\Scintillua++\\LexLPeg_64.dll";
+#else
+			config_dir += L"\\Scintillua++\\LexLPeg.dll";
+#endif
+			std::string wconfig_dir = UTF8FromString(config_dir);
 
 			ScintillaGateway editor1(nppData._scintillaMainHandle);
 			ScintillaGateway editor2(nppData._scintillaSecondHandle);
 
-			editor1.LoadLexerLibrary(UTF8FromString(config_dir).c_str());
-			editor2.LoadLexerLibrary(UTF8FromString(config_dir).c_str());
+			editor1.LoadLexerLibrary(wconfig_dir);
+			editor2.LoadLexerLibrary(wconfig_dir);
 
 			// Fall through - when launching N++, NPPN_BUFFERACTIVATED is received before
 			// NPPN_READY. Thus the first file can get ignored so now we can check now...
 		}
-		case NPPN_BUFFERACTIVATED: {
-			if (!isReady) break;
+		case NPPN_FILERENAMED:
+		case NPPN_BUFFERACTIVATED:
+			editor.SetScintillaInstance(npp.GetCurrentScintillaHwnd());
 
-			ScintillaGateway editor(GetCurrentScintilla());
+			if (!isReady)
+				break;
+			CheckFileForNewLexer();
+			break;
+		case NPPN_FILEBEFORESAVE: {
+			// Notepad++ does not notify when a file has been renamed using the normal
+			// "save as" dialog. So store the file name before the save then compare it
+			// to the file name immediately after the save occurs. If they are different then
+			// file has been renamed.
+			// NOTE: this is different from the user doing "File > Rename..." which sends the
+			// NPPN_FILERENAMED notification
 
-			if (config.over_ride || editor.GetLexer() == 1 /*SCLEX_NULL*/) {
-				wchar_t ext[MAX_PATH] = { 0 };
-				SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH, (LPARAM)ext);
-
-				SetLexer(editor, DetermineLanguageFromFileName(UTF8FromString(ext).c_str()));
-			}
+			fileBeingSaved = npp.GetFullPathFromBufferID(notify->nmhdr.idFrom);
 			break;
 		}
 		case NPPN_FILESAVED: {
-			// If the ini file was edited, reload it
-			wchar_t fname[MAX_PATH] = { 0 };
-			SendMessage(nppData._nppHandle, NPPM_GETFULLPATHFROMBUFFERID, notify->nmhdr.idFrom, (LPARAM)fname);
-			if (wcscmp(fname, GetIniFilePath(&nppData)) == 0) {
-				ConfigLoad(&nppData, &config);
+			std::wstring fileSaved = npp.GetFullPathFromBufferID(notify->nmhdr.idFrom);
+
+			if (fileSaved != fileBeingSaved) {
+				// The file was saved as a different file name
+				CheckFileForNewLexer();
 			}
+			else if (fileSaved.compare(GetIniFilePath(npp)) == 0) {
+				// If the ini file was edited, reload it
+				ConfigLoad(npp, &config);
+			}
+			else
+			{
+				if (config.over_ride || editor.GetLexer() == 1 /*SCLEX_NULL*/) {
+					auto ext = npp.GetFileName();
+					SetLexer(DetermineLanguageFromFileName(UTF8FromString(ext)));
+				}
+			}
+
+			fileBeingSaved.clear();
+
 			break;
 		}
+		case NPPN_LANGCHANGED:
+		case NPPN_FILECLOSED:
+			// Try to remove it
+			bufferLanguages.erase(notify->nmhdr.idFrom);
+			break;
 	}
 	return;
 }
@@ -205,9 +270,58 @@ extern "C" __declspec(dllexport) BOOL isUnicode() {
 
 static void editSettings() {
 	//ConfigSave(&nppData, &config);
-	SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, (LPARAM)GetIniFilePath(&nppData));
+	npp.DoOpen(GetIniFilePath(npp));
 }
 
 static void showAbout() {
 	ShowAboutDialog((HINSTANCE)_hModule, MAKEINTRESOURCE(IDD_ABOUTDLG), nppData._nppHandle);
+}
+
+static void setLanguage() {
+	std::string language = ShowLanguageDialog((HINSTANCE)_hModule, MAKEINTRESOURCE(IDD_LANGUAGEDLG), nppData._nppHandle, &config);
+
+	if (!language.empty()) {
+		npp.SetCurrentLangType(L_TEXT);
+
+		uptr_t bufferid = npp.GetCurrentBufferID();
+		bufferLanguages[bufferid] = language;
+		SetLexer(language);
+	}
+}
+
+static void editLanguageDefinition() {
+	std::string language = ShowLanguageDialog((HINSTANCE)_hModule, MAKEINTRESOURCE(IDD_LANGUAGEDLG), nppData._nppHandle, &config);
+
+	if (!language.empty()) {
+		auto config_dir = npp.GetPluginsConfigDir();
+		config_dir += L"\\Scintillua++\\";
+		config_dir += StringFromUTF8(language);
+		config_dir += L".lua";
+		npp.DoOpen(config_dir);
+
+		MessageBox(nppData._nppHandle, L"Note that any changes to built-in languages may get lost when updating this plugin.", NPP_PLUGIN_NAME, MB_OK | MB_ICONINFORMATION);
+	}
+}
+
+static void createNewLanguageDefinition() {
+	auto config_dir = npp.GetPluginsConfigDir();
+	config_dir += L"\\Scintillua++\\template.txt";
+
+	std::ifstream t(config_dir);
+	std::string str;
+
+	t.seekg(0, std::ios::end);
+	str.reserve(static_cast<size_t>(t.tellg()));
+	t.seekg(0, std::ios::beg);
+	str.assign((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
+
+	npp.MenuCommand(IDM_FILE_NEW);
+
+	editor.SetText(str);
+	if (config.over_ride) {
+		SetLexer("lua");
+	}
+	else {
+		npp.SetCurrentLangType(L_LUA);
+	}
 }

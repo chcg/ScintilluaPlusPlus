@@ -19,19 +19,38 @@
 #include "Config.h"
 #include "Utilities.h"
 
-const wchar_t *GetIniFilePath(const NppData *nppData) {
-	static wchar_t iniPath[MAX_PATH];
-	SendMessage(nppData->_nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, (LPARAM)iniPath);
-	wcscat_s(iniPath, MAX_PATH, L"\\Scintillua++.ini");
+#include <Shlwapi.h>
+
+const wchar_t *GetIniFilePath(const NotepadPPGateway &npp) {
+	static wchar_t iniPath[MAX_PATH] = { 0 };
+
+	if (iniPath[0] == 0) {
+		npp.GetPluginsConfigDir(MAX_PATH, iniPath);
+		wcscat_s(iniPath, MAX_PATH, L"\\Scintillua++.ini");
+	}
+
 	return iniPath;
 }
 
-void ConfigLoad(const NppData *nppData, Configuration *config) {
-	const wchar_t *iniPath = GetIniFilePath(nppData);
+void EnsureConfigFileExists(const NotepadPPGateway &npp) {
+	if (PathFileExists(GetIniFilePath(npp)) == FALSE) {
+		wchar_t defaultPath[MAX_PATH] = { 0 };
+		npp.GetPluginsConfigDir(MAX_PATH, defaultPath);
+		wcscat_s(defaultPath, MAX_PATH, L"\\Scintillua++\\default.ini");
+		CopyFile(defaultPath, GetIniFilePath(npp), TRUE);
+	}
+}
+
+void ConfigLoad(const NotepadPPGateway &npp, Configuration *config) {
+	EnsureConfigFileExists(npp);
+
+	const wchar_t *iniPath = GetIniFilePath(npp);
 
 	FILE *file = _wfopen(iniPath, L"r");
 
 	if (file == nullptr) return;
+
+	config->file_extensions.clear();
 
 	char line[512];
 	while (true) {

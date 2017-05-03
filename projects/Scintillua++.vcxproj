@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -21,6 +21,8 @@
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
     <ClInclude Include="..\src\Config.h" />
+    <ClInclude Include="..\src\LanguageDialog.h" />
+    <ClInclude Include="..\src\NotepadPPGateway.h" />
     <ClInclude Include="..\src\Utilities.h" />
     <ClInclude Include="..\src\Hyperlinks.h" />
     <ClInclude Include="..\src\menuCmdID.h" />
@@ -38,6 +40,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\AboutDialog.cpp" />
+    <ClCompile Include="..\src\LanguageDialog.cpp" />
     <ClCompile Include="..\src\Config.cpp" />
     <ClCompile Include="..\src\Hyperlinks.cpp" />
     <ClCompile Include="..\src\Main.cpp" />
@@ -52,23 +55,23 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v140_xp</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v140_xp</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v140_xp</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v140_xp</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -148,7 +151,7 @@ if not EXIST "$(APPDATA)\Notepad++\plugins\config\Scintillua++\" (mkdir "$(APPDA
 
 copy "$(SolutionDir)bin\$(Configuration)_$(Platform)\LexLPeg.dll" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\"
 xcopy "$(SolutionDir)ext\scintillua\lexers\*" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\" /E /y
-copy "$(SolutionDir)extra\Scintillua++.ini" "$(APPDATA)\Notepad++\plugins\config\"
+copy "$(SolutionDir)extra\default.ini" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\"
 copy "$(SolutionDir)extra\npp.lua" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\themes"
 )</Command>
     </PostBuildEvent>
@@ -180,7 +183,16 @@ copy "$(SolutionDir)extra\npp.lua" "$(APPDATA)\Notepad++\plugins\config\Scintill
       <ImportLibrary>$(OutDir)Scintillua++.lib</ImportLibrary>
     </Link>
     <PostBuildEvent>
-      <Command>if EXIST "C:\Program Files\Notepad++\plugins" (copy "$(TargetPath)" "C:\Program Files\Notepad++\plugins")</Command>
+      <Command>if EXIST "C:\Program Files\Notepad++\plugins" (
+copy "$(TargetPath)" "C:\Program Files\Notepad++\plugins"
+
+if not EXIST "$(APPDATA)\Notepad++\plugins\config\Scintillua++\" (mkdir "$(APPDATA)\Notepad++\plugins\config\Scintillua++\")
+
+copy "$(SolutionDir)bin\$(Configuration)_$(Platform)\LexLPeg_64.dll" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\"
+xcopy "$(SolutionDir)ext\scintillua\lexers\*" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\" /E /y
+copy "$(SolutionDir)extra\default.ini" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\"
+copy "$(SolutionDir)extra\npp.lua" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\themes"
+)</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -215,7 +227,7 @@ if not EXIST "$(APPDATA)\Notepad++\plugins\config\Scintillua++\" (mkdir "$(APPDA
 
 copy "$(SolutionDir)bin\$(Configuration)_$(Platform)\LexLPeg.dll" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\"
 xcopy "$(SolutionDir)ext\scintillua\lexers\*" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\" /E /y
-copy "$(SolutionDir)extra\Scintillua++.ini" "$(APPDATA)\Notepad++\plugins\config\"
+copy "$(SolutionDir)extra\default.ini" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\"
 copy "$(SolutionDir)extra\npp.lua" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\themes"
 )</Command>
     </PostBuildEvent>
@@ -242,7 +254,16 @@ copy "$(SolutionDir)extra\npp.lua" "$(APPDATA)\Notepad++\plugins\config\Scintill
       <ImportLibrary>$(OutDir)Scintillua++.lib</ImportLibrary>
     </Link>
     <PostBuildEvent>
-      <Command>if EXIST "C:\Program Files\Notepad++\plugins" (copy "$(TargetPath)" "C:\Program Files\Notepad++\plugins")</Command>
+      <Command>if EXIST "C:\Program Files\Notepad++\plugins" (
+copy "$(TargetPath)" "C:\Program Files\Notepad++\plugins"
+
+if not EXIST "$(APPDATA)\Notepad++\plugins\config\Scintillua++\" (mkdir "$(APPDATA)\Notepad++\plugins\config\Scintillua++\")
+
+copy "$(SolutionDir)bin\$(Configuration)_$(Platform)\LexLPeg_64.dll" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\"
+xcopy "$(SolutionDir)ext\scintillua\lexers\*" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\" /E /y
+copy "$(SolutionDir)extra\default.ini" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\"
+copy "$(SolutionDir)extra\npp.lua" "$(APPDATA)\Notepad++\plugins\config\Scintillua++\themes"
+)</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
